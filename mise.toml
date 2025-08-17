@@ -1,8 +1,26 @@
+[project]
+name = "stb_answer_key"
+version = "0.1.0"
+
 [tools]
 python = "3.11"
 ruff = "latest"
 uv = "latest"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Tarefa para APENAS verificar o código por erros
 [tasks.lint]
 description = "Lint the code"
-run = "ruff src/"
+run = "ruff check src/"
+
+# Tarefa para APENAS formatar o código
+[tasks.format]
+description = "Format the code"
+run = "ruff format src/"
+
+# Tarefa para verificar e CORRIGIR o que for possível
+[tasks.fix]
+description = "Lint and automatically fix what's possible"
+run = "ruff check src/ --fix"

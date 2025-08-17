@@ -1,92 +1,69 @@
-# Importações necessárias para anotações de tipo
 from typing import List, Union
 import numpy as np
-
-# Importações das bibliotecas
+import cv2
 from ultralytics import YOLO
-from ultralytics.engine.results import Results  # Tipo específico para os resultados do YOLO
+from ultralytics.engine.results import Results
 
-# Importação do nosso tipo customizado
-from shared.types import Circle
+from ..shared.log_utils import draw_circles_on_image, log_image, log_json
+from ..shared.geometry_utils import filter_spatial_outliers 
 
 
-def _convert_yolo_results_to_circles(yolo_results: List[Results]) -> List[Circle]:
-    """Converte os resultados brutos de uma detecção do YOLO para uma lista de Círculos.
+from ..shared.types import Circle
+from . import debug
 
-    Esta é uma função auxiliar que extrai as caixas delimitadoras (bounding boxes)
-    do objeto de resultado do YOLO, calcula as propriedades de um círculo
-    (centro e raio) a partir de cada caixa e as instancia como objetos Circle.
-
-    Args:
-        yolo_results (List[Results]): A lista de resultados retornada por uma
-            chamada ao modelo YOLO. Normalmente contém um único elemento para
-            uma única imagem.
-
-    Returns:
-        List[Circle]: Uma lista de objetos Circle, cada um representando um
-            círculo detectado. A lista estará vazia se nenhuma detecção for feita.
+class MarkedCirclesDetector:
     """
-    detected_circles: List[Circle] = []
-    
-    # yolo_results é uma lista, normalmente com um resultado por imagem
-    if not yolo_results or not yolo_results[0].boxes:
-        print("\nNenhuma caixa delimitadora foi encontrada nos resultados.")
+    Encapsula o modelo de detecção e sua lógica para ser carregado uma única vez.
+    """
+    def __init__(self, model_path: str):
+        self.model = YOLO(model_path)
+
+    def _convert_yolo_results_to_circles(self, yolo_results: List[Results]) -> List[Circle]:
+        detected_circles: List[Circle] = []
+
+        if not yolo_results or not yolo_results[0].boxes:
+            return detected_circles
+
+        boxes = yolo_results[0].boxes.xyxy.cpu().numpy()
+        print(f"DEBUG: Detectado '{len(boxes)}' circulos.")
+
+        for box in boxes:
+            x1, y1, x2, y2 = box
+            center_x = (x1 + x2) / 2
+            center_y = (y1 + y2) / 2
+            radius = ((x2 - x1) + (y2 - y1)) / 4
+
+            circle = Circle(
+                center_x=center_x,
+                center_y=center_y,
+                radius=radius,
+                filled=True,
+            )
+            detected_circles.append(circle)
+        
         return detected_circles
 
-    # Converte os tensores para arrays NumPy na CPU para facilitar a manipulação
-    boxes = yolo_results[0].boxes.xyxy.cpu().numpy()
-    # confidences = yolo_results[0].boxes.conf.cpu().numpy() # Descomente se precisar usar a confiança
+    def detect(self, image: Union[str, np.ndarray], trace_id: str) -> List[Circle]:
+        if isinstance(image, str):
+            image_np = cv2.imread(image)
+            if image_np is None:
+                raise FileNotFoundError(f"Não foi possível carregar a imagem em: {image}")
+        else:
+            image_np = image
+        log_image(trace_id, image, "1_original")     
 
-    for i, box in enumerate(boxes):
-        # Extrai as coordenadas da caixa (x-inicial, y-inicial, x-final, y-final)
-        x1, y1, x2, y2 = box
-        print(f"Caixa {i}: {box}.")
+        results = self.model(image_np)
 
-        # Calcula o centro (cx, cy) da caixa
-        center_x = (x1 + x2) / 2
-        center_y = (y1 + y2) / 2
+        raw_circles = self._convert_yolo_results_to_circles(results)
+        print(f"DEBUG: Detectado '{len(raw_circles)}' circulos.")
+        log_json(trace_id, raw_circles, "todos circulos marcados")
+        annotated_image = draw_circles_on_image(image.copy(), raw_circles)
+        log_image(trace_id, annotated_image, "2_anotada")     
 
-        # Calcula a largura e a altura da caixa
-        width = x2 - x1
-        height = y2 - y1
+        inliers, outliers, log_data = filter_spatial_outliers(raw_circles)
+        print(f"DEBUG: Filtrados circulos. Restam '{len(inliers)}' circulos.")
+        log_json(trace_id, log_data, "circulos marcados filtrados")
+        annotated_image = draw_circles_on_image(image.copy(), inliers)
+        log_image(trace_id, annotated_image, "3_anotada_filtrada")     
 
-        # Estima o raio como a média da metade da largura e da metade da altura
-        radius = (width + height) / 4
-
-        # Cria a instância do nosso tipo Circle
-        circle = Circle(
-            center_x=center_x,
-            center_y=center_y,
-            radius=radius,
-            filled=True  # Assumimos que este modelo só detecta círculos preenchidos
-        )
-        detected_circles.append(circle)
-        
-    print(f"\nForam encontrados {len(detected_circles)} círculos marcados.")
-    return detected_circles
-
-
-def detect_filled_circles(image: Union[str, np.ndarray]) -> List[Circle]:
-    """Detecta círculos preenchidos em uma imagem usando um modelo YOLOv8 pré-treinado.
-
-    Esta função carrega um modelo YOLO, executa a inferência na imagem fornecida e, em seguida,
-    converte os resultados da detecção em uma lista estruturada de objetos Circle.
-
-    Args:
-        image (Union[str, np.ndarray]): A imagem a ser processada. Pode ser
-            o caminho para o arquivo de imagem (str) ou a imagem já carregada
-            como um array NumPy (por exemplo, usando OpenCV `cv2.imread`).
-
-    Returns:
-        List[Circle]: Uma lista de objetos Circle, onde cada objeto representa
-            um círculo preenchido detectado na imagem.
-    """
-    # Carrega o modelo YOLO a partir do arquivo de pesos.
-    # OBS: Veja o ponto de melhoria abaixo.
-    model = YOLO("detect_marks/detect_filled_circles.pt")
-    
-    # Executa a predição na imagem
-    results = model(image)
-    
-    # Converte os resultados brutos para a nossa estrutura de dados Circle
-    return _convert_yolo_results_to_circles(results)
+        return {"ok":True}
