@@ -6,6 +6,7 @@ from fastapi import FastAPI, File, UploadFile
 
 from src.shared.log_utils import initialize_trace
 from src.marked_circles_detection.service import MarkedCirclesDetector
+from src.general_circles_detection.service import detect_todos_circulos_possiveis
 
 print("Carregando o modelo de detecção...")
 detector = MarkedCirclesDetector(model_path="src/marked_circles_detection/best.pt")
@@ -26,10 +27,12 @@ async def detect_marks_endpoint(file: UploadFile = File(...)):
     trace_id = str(uuid.uuid4())
     initialize_trace(trace_id)
     result_circles = detector.detect(img, trace_id=trace_id)
-
+    all_circles = detect_todos_circulos_possiveis(img, result_circles, trace_id=trace_id)
     return {
         "trace_id": trace_id,
-        "detected_circles": result_circles
+        "sucesso": True,
+        "quantidade_marcados":len(result_circles),
+        "quantidade_encontrados_total":len(all_circles)
     }
 
 def main():

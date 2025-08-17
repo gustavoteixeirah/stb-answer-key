@@ -3,6 +3,70 @@
 from typing import List, Tuple, Dict, Any
 import numpy as np
 from .types import Circle
+import math
+
+def _calculate_distance(c1: Circle, c2: Circle) -> float:
+    """Função auxiliar para calcular a distância euclidiana entre os centros de dois círculos."""
+    return math.sqrt((c1.center_x - c2.center_x)**2 + (c1.center_y - c2.center_y)**2)
+
+def merge_close_circles(circles: List[Circle], dist_threshold: float) -> List[Circle]:
+    """
+    Remove círculos duplicados de uma lista, fundindo os que estão muito próximos.
+
+    Esta função itera sobre uma lista de círculos e agrupa aqueles cujos centros
+    estão mais próximos do que um determinado limiar. Os círculos agrupados são
+    substituídos por um único círculo cuja posição e raio são a média dos
+    círculos originais.
+
+    Args:
+        circles (List[Circle]): A lista de objetos Circle para processar.
+        dist_threshold (float): A distância máxima entre os centros para que dois
+                                círculos sejam considerados uma duplicata a ser fundida.
+
+    Returns:
+        List[Circle]: Uma nova lista contendo os círculos únicos e fundidos.
+    """
+    unique_circles: List[Circle] = []
+    
+    for candidate_circle in circles:
+        match_found_idx = -1  # Índice do círculo correspondente na lista de únicos
+        
+        # Procura por um círculo próximo na nossa lista de círculos já validados
+        for i, existing_circle in enumerate(unique_circles):
+            dist = _calculate_distance(candidate_circle, existing_circle)
+            
+            if dist < dist_threshold:
+                match_found_idx = i
+                break  # Encontrou uma correspondência, pode parar de procurar
+        
+        if match_found_idx != -1:
+            # --- LÓGICA DE FUSÃO (MERGE) ---
+            # Se encontrou um duplicado, funde o candidato com o existente
+            
+            circle_to_merge_with = unique_circles[match_found_idx]
+            
+            # Calcula a média simples dos centros e raios
+            new_center_x = (candidate_circle.center_x + circle_to_merge_with.center_x) / 2
+            new_center_y = (candidate_circle.center_y + circle_to_merge_with.center_y) / 2
+            new_radius = (candidate_circle.radius + circle_to_merge_with.radius) / 2
+            
+            # O status 'filled' será True se qualquer um dos círculos fundidos for True
+            new_filled_status = candidate_circle.filled or circle_to_merge_with.filled
+
+            # Atualiza o círculo na lista de únicos com uma nova instância
+            unique_circles[match_found_idx] = Circle(
+                center_x=new_center_x,
+                center_y=new_center_y,
+                radius=new_radius,
+                filled=new_filled_status
+            )
+        else:
+            # Se nenhum círculo correspondente foi encontrado, adiciona o candidato
+            # à lista de únicos.
+            unique_circles.append(candidate_circle)
+            
+    return unique_circles
+
 
 def filter_spatial_outliers(circles: List[Circle], k: int = 5, std_dev_multiplier: float = 2.0) -> Tuple[List[Circle], List[Circle], Dict[str, Any]]:
     """

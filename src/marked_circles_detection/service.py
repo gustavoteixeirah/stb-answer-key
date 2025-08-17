@@ -66,4 +66,4 @@ class MarkedCirclesDetector:
         annotated_image = draw_circles_on_image(image.copy(), inliers)
         log_image(trace_id, annotated_image, "3_anotada_filtrada")     
 
-        return {"ok":True}
+        return inliers
