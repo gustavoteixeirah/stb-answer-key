@@ -1,0 +1,8 @@
+[tools]
+python = "3.11"
+ruff = "latest"
+uv = "latest"
+
+[tasks.lint]
+description = "Lint the code"
+run = "ruff src/"
